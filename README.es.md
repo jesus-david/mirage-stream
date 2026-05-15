@@ -224,12 +224,14 @@ Como `HDMI-A-1` es la **única pantalla activa** durante el streaming, todas las
 - Confirma que `cap_sys_admin` está configurado: `getcap $(which sunshine)`
 - Revisa logs: `journalctl --user -u app-dev.lizardbyte.app.Sunshine.service -n 100`
 
-**connect.sh no hace nada / kscreen-doctor falla silenciosamente**
-- El script necesita las variables de entorno de Wayland. Verifica que estas líneas están en el script:
+**connect.sh no hace nada / los monitores no cambian / kscreen-doctor falla silenciosamente**
+- Sunshine ejecuta los scripts sin el entorno completo de la sesión de usuario. El script debe exportar las tres variables:
   ```bash
   export WAYLAND_DISPLAY=wayland-0
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
+  export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
   ```
+- `DBUS_SESSION_BUS_ADDRESS` es la que más frecuentemente falta — kscreen-doctor la usa para comunicarse con KWin y falla silenciosamente sin ella.
 
 **Aparece Virtual-1 u otros displays virtuales extra**
 - Puede que el módulo `vkms` se esté cargando al arranque. Elimínalo:
