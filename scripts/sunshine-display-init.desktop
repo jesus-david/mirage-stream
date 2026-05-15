@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Sunshine Display Init
+Exec=/home/jesus/.config/autostart/sunshine-display-init.sh
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

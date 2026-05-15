@@ -155,20 +155,34 @@ cp scripts/connect.sh scripts/disconnect.sh ~/.config/sunshine/scripts/
 chmod +x ~/.config/sunshine/scripts/*.sh
 ```
 
-## Paso 7 — Configurar Capabilities de Sunshine
+## Paso 7 — Instalar el Script de Autostart
+
+Como `HDMI-A-1` siempre aparece como *connected* a nivel de kernel (la inyección de EDID es permanente), KDE restaura el estado de pantallas de la última sesión al arrancar. Si el equipo se apagó con un cliente conectado, `HDMI-A-1` arrancará activa y solapada con el monitor principal.
+
+El fix es un script de autostart que fuerza el estado correcto en cada inicio de sesión:
+
+```bash
+cp scripts/display-init.sh ~/.config/autostart/sunshine-display-init.sh
+cp scripts/sunshine-display-init.desktop ~/.config/autostart/
+chmod +x ~/.config/autostart/sunshine-display-init.sh
+```
+
+Este script espera 3 segundos a que KWin termine de inicializar, luego desactiva `HDMI-A-1` y asegura que los monitores físicos estén activos.
+
+## Paso 8 — Configurar Capabilities de Sunshine
 
 Necesario para KMS capture:
 ```bash
 sudo setcap cap_sys_admin+p $(readlink -f $(which sunshine))
 ```
 
-## Paso 8 — Reiniciar
+## Paso 9 — Reiniciar
 
 ```bash
 sudo reboot
 ```
 
-## Paso 9 — Verificar
+## Paso 10 — Verificar
 
 Tras el reinicio, comprueba que `HDMI-A-1` tiene modos reales:
 ```bash
