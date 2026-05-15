@@ -1,0 +1,8 @@
+# Sunshine configuration for NVIDIA KMS capture with virtual display.
+# Copy relevant lines to ~/.config/sunshine/sunshine.conf
+# Replace /home/USER with your actual home directory.
+
+global_prep_cmd = [{"do":"/home/USER/.config/sunshine/scripts/connect.sh","undo":"/home/USER/.config/sunshine/scripts/disconnect.sh","elevated":"false"}]
+adapter_name = /dev/dri/renderD128
+capture = kms
+encoder = nvenc
