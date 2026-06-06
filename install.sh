@@ -207,7 +207,7 @@ detect_connectors() {
     # reflects what's configured for the next boot.
     local existing
     existing="$(grep -oE 'drm\.edid_firmware=[^: ]+:[^ ]+' /proc/cmdline /etc/kernel/cmdline 2>/dev/null \
-                | head -1 | sed -E 's|.*drm\.edid_firmware=([^:]+):.*|\1|')"
+                | head -1 | sed -E 's|.*drm\.edid_firmware=([^:]+):.*|\1|' || true)"
     if [[ -n "$existing" ]]; then
         VIRTUAL_CONNECTOR="$existing"
         log "Detected existing virtual connector from kernel cmdline: ${VIRTUAL_CONNECTOR}"
@@ -562,7 +562,7 @@ os.chmod(tmp, 0o644)
 print(f"changed={changed} tmp={tmp}")
 PY
     local tmp
-    tmp="$(ls -t /tmp/tmp*.json 2>/dev/null | head -1)"
+    tmp="$(ls -t /tmp/tmp*.json 2>/dev/null | head -1 || true)"
     if [[ -n "$tmp" ]]; then
         run_or_print "sudo install -o plasmalogin -g plasmalogin -m 644 '${tmp}' '${cfg}'"
         run_or_print "sudo rm -f '${tmp}'"
