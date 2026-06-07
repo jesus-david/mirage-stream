@@ -1,7 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Sunshine Display Init
-Exec=/home/jesus/.config/autostart/sunshine-display-init.sh
+# Template: replace /home/YOUR_USER with your actual home directory.
+# On Fedora/Nobara, install.sh generates this file correctly — do not copy directly.
+Exec=/home/YOUR_USER/.config/autostart/sunshine-display-init.sh
 Hidden=false
 NoDisplay=true
 X-GNOME-Autostart-enabled=true

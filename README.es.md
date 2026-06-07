@@ -38,19 +38,46 @@ Sin estos dos bloques, NVIDIA no activa el CRTC, resultando en resolución 0x0 y
 
 ## Probado En
 
-- **SO:** CachyOS (basado en Arch), kernel linux-cachyos 7.0.6
-- **GPU:** NVIDIA RTX 4060 Ti, driver 570.x (también funciona en RTX 5080 con driver 595.58)
-- **Escritorio:** KDE Plasma 6.6.5, Wayland
-- **Sunshine:** 2026.508.45922
+| SO | Kernel | GPU / Driver | Escritorio | Sunshine |
+|---|---|---|---|---|
+| CachyOS (Arch) | linux-cachyos 7.0.6 | RTX 4060 Ti, driver 570.x | KDE Plasma 6.6.5, Wayland | 2026.508.45922 |
+| Fedora 44 KDE | 7.0.9-202.fc44 | RTX 4060 Ti, akmod-nvidia 595.71 | KDE Plasma 6 + Hyprland, Wayland | 2026.516.143833 |
+| Nobara 43 (base Fedora) | 7.0.5-200.nobara.fc43 | RTX 4060 Ti, driver 570.x | KDE Plasma 6, Wayland | 2026.516.30826 |
+
+También reportado funcionando en RTX 5080 con driver 595.58.
 
 ## Requisitos
 
-- Arch Linux o CachyOS
-- Driver propietario de NVIDIA (`nvidia-dkms` o `nvidia`)
-- Sunshine instalado (AUR o paquete nativo)
+- Arch/CachyOS **o** cualquier distro basada en Fedora (Fedora, Nobara)
+- Driver propietario de NVIDIA (`nvidia-dkms` / `nvidia` / `akmod-nvidia`)
+- Sunshine instalado (AUR, COPR de LizardByte, o RPM desde GitHub releases)
 - `python3` (para generar el EDID)
-- Un conector libre sin monitor físico conectado (ej. `HDMI-A-1`)
+- Un conector libre sin monitor físico conectado (ej. `HDMI-A-1`, `HDMI-A-2`)
 - `kscreen-doctor` (parte de `kscreen`, normalmente pre-instalado con KDE)
+
+## Instalación
+
+### Automatizada — Fedora / Nobara
+
+El installer detecta automáticamente la tarjeta NVIDIA, el conector libre, el nodo render, la herramienta de initramfs, el bootloader y el gestor de pantalla, y configura todo:
+
+```bash
+./install.sh
+```
+
+Flags opcionales:
+- `--remote-first` — autologin + bloqueo de pantalla inmediato + servicio Sunshine al arranque (equivalente a Windows AutoLogon)
+- `--dry-run` — muestra todas las acciones sin aplicarlas
+- `-y` — omite las confirmaciones
+- `uninstall` — revierte todos los cambios
+
+Ver [FEDORA-NOTES.md](FEDORA-NOTES.md) para notas detalladas sobre Fedora y el diseño del installer.
+
+### Manual — Arch / CachyOS
+
+Sigue los Pasos 1–10 a continuación.
+
+---
 
 ## Paso 1 — Encontrar el Conector Libre
 
@@ -61,11 +88,19 @@ for p in /sys/class/drm/card*-*/status; do
 done
 ```
 
-Busca un conector en la tarjeta NVIDIA (`card1` en la mayoría de sistemas) que muestre `disconnected`. En esta guía usamos `HDMI-A-1`. Ajusta el nombre del conector si el tuyo es diferente.
+Primero identifica cuál tarjeta es la NVIDIA:
+
+```bash
+for d in /sys/class/drm/card[0-9]/device/driver; do
+    drv=$(basename "$(readlink "$d")")
+    card=$(basename "$(dirname "$(dirname "$d")")")
+    echo "$card: $drv"
+done
+```
+
+En esta guía usamos `HDMI-A-1`. Ajusta el nombre del conector si el tuyo es diferente (en sistemas multi-GPU es común `HDMI-A-2`, `DP-4`, etc.).
 
 ## Paso 2 — Generar el EDID
-
-Descarga y ejecuta el script generador de EDID:
 
 ```bash
 python3 create-edid.py virtual.bin
@@ -141,11 +176,9 @@ encoder = nvenc
 
 Sustituye `USUARIO` por tu nombre de usuario. Para encontrar tu nodo render de NVIDIA:
 ```bash
-for card in /sys/class/drm/card[0-9]; do
-    echo "$(basename $card): $(cat $card/device/uevent | grep DRIVER)"
-done
+ls -la /dev/dri/by-path/ | grep render
 ```
-La tarjeta con `DRIVER=nvidia` mapea a `renderD128` en la mayoría de sistemas con una sola GPU discreta.
+En sistemas con una sola GPU el nodo render de NVIDIA suele ser `renderD128`. En sistemas con iGPU AMD + dGPU NVIDIA puede ser `renderD129` — comprueba `by-path/pci-<BDF>-render` donde `<BDF>` es la dirección PCI de la tarjeta NVIDIA.
 
 ## Paso 6 — Instalar los Scripts de Conexión/Desconexión
 
@@ -155,9 +188,11 @@ cp scripts/connect.sh scripts/disconnect.sh ~/.config/sunshine/scripts/
 chmod +x ~/.config/sunshine/scripts/*.sh
 ```
 
+Edita los scripts y sustituye los nombres de conector (`HDMI-A-1`, `DP-2`, `DP-3`) por tus conectores reales.
+
 ## Paso 7 — Instalar el Script de Autostart
 
-Como `HDMI-A-1` siempre aparece como *connected* a nivel de kernel (la inyección de EDID es permanente), KDE restaura el estado de pantallas de la última sesión al arrancar. Si el equipo se apagó con un cliente conectado, `HDMI-A-1` arrancará activa y solapada con el monitor principal.
+Como el conector virtual siempre aparece como *connected* a nivel de kernel (la inyección de EDID es permanente), KDE restaura el estado de pantallas de la última sesión al arrancar. Si el equipo se apagó con un cliente conectado, el conector virtual arrancará activo y solapado con el monitor principal.
 
 El fix es un script de autostart que fuerza el estado correcto en cada inicio de sesión:
 
@@ -167,7 +202,10 @@ cp scripts/sunshine-display-init.desktop ~/.config/autostart/
 chmod +x ~/.config/autostart/sunshine-display-init.sh
 ```
 
-Este script espera 3 segundos a que KWin termine de inicializar, luego desactiva `HDMI-A-1` y asegura que los monitores físicos estén activos.
+Edita `~/.config/autostart/sunshine-display-init.sh` con tus nombres de conector reales.
+Edita `~/.config/autostart/sunshine-display-init.desktop` y actualiza la ruta `Exec` con tu nombre de usuario.
+
+Este script espera 3 segundos a que KWin termine de inicializar, luego desactiva el conector virtual y asegura que los monitores físicos estén activos.
 
 ## Paso 8 — Configurar Capabilities de Sunshine
 
@@ -175,6 +213,8 @@ Necesario para KMS capture:
 ```bash
 sudo setcap cap_sys_admin+p $(readlink -f $(which sunshine))
 ```
+
+Nota: el RPM de LizardByte para Fedora ya establece `cap_sys_admin,cap_sys_nice=p` — este paso solo es necesario en instalaciones de Arch/AUR.
 
 ## Paso 9 — Reiniciar
 
@@ -184,12 +224,14 @@ sudo reboot
 
 ## Paso 10 — Verificar
 
-Tras el reinicio, comprueba que `HDMI-A-1` tiene modos reales:
+Tras el reinicio, comprueba que el conector virtual tiene modos reales:
 ```bash
 kscreen-doctor -o | grep -A 5 "HDMI-A-1"
 ```
 
 Deberías ver una lista de resoluciones (1080p, 1440p, 4K, etc.) en lugar de `0x0`. El display virtual está desactivado por defecto y solo se activa cuando conecta un cliente Moonlight.
+
+---
 
 ## Cómo Funciona
 
@@ -210,18 +252,21 @@ Cliente desconecta:
     DP-2, DP-3 ── Restaurados
 ```
 
-Como `HDMI-A-1` es la **única pantalla activa** durante el streaming, todas las ventanas se abren ahí y el cliente lo ve todo.
+Como el conector virtual es la **única pantalla activa** durante el streaming, todas las ventanas se abren ahí y el cliente lo ve todo.
 
 ## Solución de Problemas
 
-**HDMI-A-1 muestra 0x0 tras el reinicio**
+**El conector virtual muestra 0x0 tras el reinicio**
 - Verifica que ambos parámetros de kernel están presentes: `cat /proc/cmdline | grep edid`
 - Verifica que el EDID tiene los bloques VSDB (ejecuta el script de verificación del Paso 2)
-- Confirma que el EDID está en el initramfs: `lsinitcpio /boot/initramfs-linux.img | grep edid`
+- Arch: confirma que el EDID está en el initramfs: `lsinitcpio /boot/initramfs-linux.img | grep edid`
+- Fedora: confirma que el EDID está en el initramfs: `sudo lsinitrd /boot/initramfs-$(uname -r).img | grep edid`
+- Fedora con SELinux Enforcing: comprueba que el archivo tiene la etiqueta correcta: `ls -lZ /usr/lib/firmware/edid/virtual.bin` — debe mostrar `lib_t`. Corrige con: `sudo restorecon -Rv /usr/lib/firmware/edid/`
 
 **Error 503 en Sunshine / pantalla negra**
 - Confirma que `capture = kms` está en `sunshine.conf`
 - Confirma que `cap_sys_admin` está configurado: `getcap $(which sunshine)`
+- Confirma que `adapter_name` apunta al nodo render de NVIDIA (no al de la iGPU)
 - Revisa logs: `journalctl --user -u app-dev.lizardbyte.app.Sunshine.service -n 100`
 
 **connect.sh no hace nada / los monitores no cambian / kscreen-doctor falla silenciosamente**
@@ -240,10 +285,14 @@ Como `HDMI-A-1` es la **única pantalla activa** durante el streaming, todas las
   sudo reboot
   ```
 
+**El conector virtual solapa los monitores físicos en la pantalla de login (Fedora)**
+- plasmalogin (gestor de sesión de KDE) guarda su propia configuración de pantallas. Edita `/var/lib/plasmalogin/.config/kwinoutputconfig.json` para desactivar el conector virtual en la configuración del greeter, o vuelve a ejecutar `./install.sh --remote-first` tras el primer arranque con el conector virtual activo.
+
 ## Notas
 
 - **HDR**: No funciona en displays virtuales. NVIDIA solo crea las propiedades DRM necesarias (`HDR_OUTPUT_METADATA`, `Colorspace`, `max_bpc`) cuando detecta un enlace físico HDMI 2.1 real con negociación SCDC. Es una limitación del driver sin solución conocida.
 - **Resolución**: Sunshine ajusta automáticamente la resolución del display virtual para que coincida con el cliente que se conecta.
+- **Desinstalar (Fedora)**: `./install.sh uninstall` revierte todos los cambios (kernel args, initramfs, firmware, autologin, scripts).
 - Este setup está basado en el [gist de HarryAnkers](https://gist.github.com/HarryAnkers/8dbf551d66f00e8156ef4dd2b2b090a0) con investigación adicional sobre integración con KDE Wayland, scripts de conexión/desconexión, y el fallo de VKMS con NVIDIA.
 
 ## Licencia

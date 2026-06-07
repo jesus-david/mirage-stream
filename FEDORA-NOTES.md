@@ -2,14 +2,36 @@
 
 Working notes for adapting this project from Arch (Limine + mkinitcpio) to
 Fedora-based distros (GRUB + BLS + dracut). Verified on **Nobara Linux 43**
-(Fedora 43 base, KDE Plasma 6 Wayland) with **NVIDIA RTX 4060 Ti**.
+and **Fedora 44 KDE** with **NVIDIA RTX 4060 Ti**.
 
-These notes are intermediate. They feed into `install.sh` for the
-multi-distro automated installer.
+These notes feed into `install.sh` — the automated installer for Fedora-based
+distros.
 
 ---
 
 ## Tested hardware / software
+
+### Fedora 44 KDE
+
+| Component | Value |
+|---|---|
+| Distro | Fedora 44 (KDE Plasma Desktop Edition) |
+| Kernel | 7.0.9-202.fc44.x86_64 |
+| DE | KDE Plasma 6 + Hyprland, Wayland |
+| CPU / iGPU | AMD Ryzen 5 7600X (Raphael iGPU on `card1`) |
+| dGPU | NVIDIA RTX 4060 Ti, akmod-nvidia 595.71 (`card2`) |
+| Bootloader | GRUB UEFI + BLS, `grubby` available |
+| Initramfs | dracut |
+| BLS | enabled (`GRUB_ENABLE_BLSCFG='true'`) |
+| Sunshine | LizardByte RPM `Sunshine-2026.516.143833-1.fc44.x86_64` |
+| SELinux | **Enforcing** (stock Fedora default) |
+| Virtual connector | `HDMI-A-2` (on `card2`) |
+| Physical connectors | `DP-5` (2560×1440@144), `DP-6` (2560×1080@90) |
+| Render node | `/dev/dri/renderD129` |
+
+**SELinux note**: stock Fedora runs SELinux Enforcing (unlike Nobara which disables it). After install, run `sudo restorecon -Rv /usr/lib/firmware/edid/` to ensure the firmware file gets the correct `lib_t` label. The installer does not do this automatically.
+
+### Nobara 43
 
 | Component | Value |
 |---|---|
@@ -40,11 +62,12 @@ multi-distro automated installer.
 | SELinux | n/a | `getenforce` — typically `Disabled` on Nobara, may be `Enforcing` on stock Fedora |
 | Connector name (HDMI-A-1?) | NVIDIA was `card2`; HDMI-A-1 was on NVIDIA | NVIDIA is `card1`; HDMI-A-1 is on AMD iGPU. Use `HDMI-A-2` or `DP-4` (free NVIDIA connectors) |
 
-**Critical gotcha**: the order of DRM cards is **not stable** across distros.
-On the same hardware, Arch loaded `amdgpu` first (NVIDIA = card2), Nobara loads
-NVIDIA first (NVIDIA = card1). This shifts every connector name. The
-installer **must detect the NVIDIA card and its free connectors dynamically**,
-not assume `card2-HDMI-A-1`.
+**Critical gotcha**: the order of DRM cards is **not stable** across distros
+or even across Fedora versions. On the same hardware: Arch loaded `amdgpu`
+first (NVIDIA = card2), Nobara 43 loaded NVIDIA first (NVIDIA = card1),
+Fedora 44 loads amdgpu first again (NVIDIA = card2). This shifts every
+connector name. The installer **must detect the NVIDIA card and its free
+connectors dynamically**, not assume any specific card number.
 
 ---
 

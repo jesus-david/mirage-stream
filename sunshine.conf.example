@@ -1,6 +1,15 @@
 # Sunshine configuration for NVIDIA KMS capture with virtual display.
 # Copy relevant lines to ~/.config/sunshine/sunshine.conf
 # Replace /home/USER with your actual home directory.
+#
+# adapter_name: must point to the NVIDIA render node, not the iGPU.
+#   - Single-GPU systems: typically /dev/dri/renderD128
+#   - AMD iGPU + NVIDIA dGPU systems: often /dev/dri/renderD129
+#   Find yours: ls -la /dev/dri/by-path/ | grep render
+#   The Fedora installer (install.sh) detects and sets this automatically.
+#
+# On Fedora with the LizardByte RPM, cap_sys_admin is already set by the package.
+# On Arch/AUR installs, run: sudo setcap cap_sys_admin+p $(readlink -f $(which sunshine))
 
 global_prep_cmd = [{"do":"/home/USER/.config/sunshine/scripts/connect.sh","undo":"/home/USER/.config/sunshine/scripts/disconnect.sh","elevated":"false"}]
 adapter_name = /dev/dri/renderD128
