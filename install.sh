@@ -329,7 +329,10 @@ install_edid_firmware() {
 
 configure_initramfs() {
     log "Configuring dracut to embed EDID in initramfs…"
-    local content='install_items+=" /usr/lib/firmware/edid/virtual.bin "'
+    # dracut 108+ silently ignores the legacy `install_items+=" ... "` string
+    # form, leaving the EDID out of regenerated initramfs (e.g. after kernel
+    # upgrades). The bash-array form is honored on both old and new dracut.
+    local content='install_items+=( "/usr/lib/firmware/edid/virtual.bin" )'
     if [[ -f "$DRACUT_DROP_IN" ]] && sudo grep -qF "$content" "$DRACUT_DROP_IN"; then
         ok "Dracut drop-in already configured (${DRACUT_DROP_IN})"
     else

@@ -52,7 +52,7 @@ distros.
 
 | Step | Arch (Limine + mkinitcpio) | Fedora / Nobara (GRUB + BLS + dracut) |
 |---|---|---|
-| Add EDID to initramfs | `FILES=()` in `/etc/mkinitcpio.conf` | drop-in `/etc/dracut.conf.d/edid.conf` with `install_items+=" … "` |
+| Add EDID to initramfs | `FILES=()` in `/etc/mkinitcpio.conf` | drop-in `/etc/dracut.conf.d/edid.conf` with `install_items+=( "…" )` (bash-array form; dracut 108 silently ignores the legacy string form) |
 | Rebuild initramfs | `sudo mkinitcpio -P` | `sudo dracut --force --regenerate-all` |
 | Inspect initramfs | `lsinitcpio /boot/initramfs-linux.img` | `sudo lsinitrd /boot/initramfs-$(uname -r).img` |
 | Set kernel cmdline (existing kernels) | `/etc/default/limine` + `limine-update-cfg` | `sudo grubby --update-kernel=ALL --args="…"` |
@@ -107,7 +107,7 @@ sudo chmod 644 /usr/lib/firmware/edid/virtual.bin
 ### 3. Embed EDID in initramfs (dracut)
 
 ```bash
-echo 'install_items+=" /usr/lib/firmware/edid/virtual.bin "' | \
+echo 'install_items+=( "/usr/lib/firmware/edid/virtual.bin" )' | \
     sudo tee /etc/dracut.conf.d/edid.conf
 
 sudo dracut --force --regenerate-all
@@ -119,9 +119,16 @@ sudo lsinitrd /boot/initramfs-$(uname -r).img | grep edid
 # expect: usr/lib/firmware/edid/virtual.bin
 ```
 
-Note: the spaces inside the quotes in `install_items+=" … "` are required
-by dracut's `+=` syntax. Without them the path concatenates with the
-previous list entry.
+Note on syntax: use the **bash-array form** `install_items+=( "..." )`, not
+the legacy string form `install_items+=" ... "`. dracut 108 (shipped in
+Fedora 44) silently ignores the string form — the config is parsed without
+errors, regenerated initramfs are valid, but the listed files are never
+embedded. This was observed on Fedora 44 after a kernel upgrade
+(`dnf upgrade` → reboot → `Sunshine error 503`, virtual connector with 0
+modes). The array form works on both old and new dracut. dracut 108 prints
+a warning `<key>+=" <values> ": <values> should have surrounding white
+spaces!` when it sees the array form — this is a false positive; the
+include actually works.
 
 ### 4. Add kernel parameters
 
