@@ -1,0 +1,6 @@
+# Generated at session start because output_name follows Hyprland's output ID.
+# Apps remain in ~/.config/sunshine/apps.json.
+adapter_name = /dev/dri/renderD129
+output_name = MIRAGE
+capture = wlr
+encoder = nvenc

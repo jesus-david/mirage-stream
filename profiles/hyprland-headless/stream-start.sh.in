@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly virtual_output="MIRAGE"
+# Persistent (not tmpfs) so a crash or power-off mid-stream leaves the
+# original waybar output on disk for the next hyprland-headless-session.sh
+# to self-heal from, instead of losing it on reboot.
+readonly state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/mirage-stream"
+readonly state_file="$state_dir/physical-monitors.json"
+readonly waybar_config="$HOME/.config/waybar/configs/TOP-Codex-Minimal-Transparent"
+readonly waybar_state_file="$state_dir/waybar-output"
+
+ensure_virtual_output_scale() {
+    hyprctl keyword monitor "$virtual_output,preferred,auto,1.25"
+    sleep 1
+}
+
+configure_remote_workspace_rules() {
+    for workspace in {1..20}; do
+        hyprctl keyword workspace "$workspace, monitor:$virtual_output"
+    done
+}
+
+switch_waybar_output() {
+    local output="$1"
+
+    [[ -f "$waybar_config" ]] || return 0
+
+    WAYBAR_OUTPUT="$output" perl -0pi -e '
+        s{^(\s*"output"\s*:\s*)"[^"]+"}{$1 . q{"} . $ENV{WAYBAR_OUTPUT} . q{"}}me
+    ' "$waybar_config"
+    systemctl --user restart waybar.service
+}
+
+[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] || exit 1
+[[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || exit 1
+
+mkdir -p "$state_dir"
+hyprctl -j monitors all | jq --arg virtual "$virtual_output" \
+    '[.[] | select(.name != $virtual and .name != "") |
+      {name, width, height, refreshRate, x, y, scale}]' >"$state_file"
+
+ensure_virtual_output_scale
+
+configure_remote_workspace_rules
+
+if [[ -f "$waybar_config" ]]; then
+    mapfile -t waybar_outputs < <(
+        sed -nE 's/^[[:space:]]*"output"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$waybar_config"
+    )
+    if (( ${#waybar_outputs[@]} == 1 )); then
+        printf '%s\n' "${waybar_outputs[0]}" >"$waybar_state_file"
+        switch_waybar_output "$virtual_output"
+    else
+        printf 'mirage-stream: Waybar output is not a single string; leaving it unchanged.\n' >&2
+    fi
+fi
+
+jq -r '.[].name' "$state_file" | while IFS= read -r monitor; do
+    hyprctl keyword monitor "$monitor,disable"
+done
+
+sleep 1
+hyprctl dispatch workspace 1

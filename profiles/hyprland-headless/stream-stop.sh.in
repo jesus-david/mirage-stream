@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/mirage-stream"
+readonly state_file="$state_dir/physical-monitors.json"
+readonly waybar_config="$HOME/.config/waybar/configs/TOP-Codex-Minimal-Transparent"
+readonly waybar_state_file="$state_dir/waybar-output"
+
+restore_local_workspace_rules() {
+    hyprctl reload config-only
+
+    for workspace in {1..20}; do
+        case "$workspace" in
+            9|10) local_monitor="DP-6" ;;
+            *) local_monitor="DP-5" ;;
+        esac
+        hyprctl keyword workspace "$workspace,monitor:$local_monitor"
+    done
+}
+
+restore_local_workspace_locations() {
+    mapfile -t workspaces < <(
+        hyprctl -j workspaces | jq -r ".[] | select(.id >= 1 and .id <= 20) | .id"
+    )
+
+    for workspace in "${workspaces[@]}"; do
+        case "$workspace" in
+            9|10) local_monitor="DP-6" ;;
+            *) local_monitor="DP-5" ;;
+        esac
+        hyprctl dispatch moveworkspacetomonitor "$workspace $local_monitor"
+    done
+}
+
+switch_waybar_output() {
+    local output="$1"
+
+    [[ -f "$waybar_config" ]] || return 0
+
+    WAYBAR_OUTPUT="$output" perl -0pi -e '
+        s{^(\s*"output"\s*:\s*)"[^"]+"}{$1 . q{"} . $ENV{WAYBAR_OUTPUT} . q{"}}me
+    ' "$waybar_config"
+    systemctl --user restart waybar.service
+}
+
+[[ -f "$state_file" ]] || exit 0
+[[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] || exit 1
+[[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || exit 1
+
+jq -r '.[] | "\(.name),\(.width)x\(.height)@\(.refreshRate),\(.x)x\(.y),\(.scale)"' "$state_file" |
+    while IFS= read -r rule; do
+        hyprctl keyword monitor "$rule"
+    done
+
+restore_local_workspace_rules
+
+restore_local_workspace_locations
+
+if hyprctl -j workspaces | jq -e '.[] | select(.id == 21)' >/dev/null; then
+    hyprctl dispatch moveworkspacetomonitor "21 MIRAGE"
+fi
+
+if [[ -s "$waybar_state_file" ]]; then
+    switch_waybar_output "$(<"$waybar_state_file")"
+fi
+
+if [[ -x "$HOME/.config/hypr/scripts/WallpaperDaemon.sh" ]]; then
+    "$HOME/.config/hypr/scripts/WallpaperDaemon.sh" &
+fi
+
+rm -f "$state_file" "$waybar_state_file"

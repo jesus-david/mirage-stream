@@ -73,6 +73,8 @@ Optional flags:
 
 See [FEDORA-NOTES.md](FEDORA-NOTES.md) for detailed Fedora-specific notes and the design of the installer.
 
+For the Hyprland-native, no-EDID profile, see [HYPRLAND-HEADLESS.es.md](HYPRLAND-HEADLESS.es.md).
+
 ### Manual — Arch / CachyOS
 
 Follow Steps 1–10 below.

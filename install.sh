@@ -2,7 +2,9 @@
 # install.sh — NVIDIA virtual display + Sunshine on Fedora-based distros.
 #
 # Usage:
-#   ./install.sh                Install (default action).
+#   ./install.sh                Install the legacy KDE/KMS profile (default).
+#   ./install.sh --profile hyprland-headless --remote-first
+#                               Install the Hyprland headless profile.
 #   ./install.sh uninstall      Reverse all changes from a prior install.
 #   ./install.sh --remote-first Enable Windows-like remote-first boot
 #                               (autologin + immediate screen lock +
@@ -24,6 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 
 ACTION=install
+PROFILE=kde-kms
 REMOTE_FIRST=false
 ASSUME_YES=false
 DRY_RUN=false
@@ -106,6 +109,15 @@ parse_args() {
     while (( $# )); do
         case "$1" in
             install|uninstall) ACTION="$1" ;;
+            --profile)
+                shift
+                [[ $# -gt 0 ]] || die "--profile requires a value"
+                PROFILE="$1"
+                case "$PROFILE" in
+                    kde-kms|hyprland-headless) ;;
+                    *) die "Unknown profile: $PROFILE (use kde-kms or hyprland-headless)" ;;
+                esac
+                ;;
             --remote-first)    REMOTE_FIRST=true ;;
             -y|--assume-yes)   ASSUME_YES=true ;;
             --dry-run)         DRY_RUN=true ;;
@@ -682,6 +694,13 @@ install_action() {
 
 main() {
     parse_args "$@"
+    if [[ "$PROFILE" == "hyprland-headless" ]]; then
+        profile_args=("$ACTION")
+        $REMOTE_FIRST && profile_args+=("--remote-first")
+        $ASSUME_YES && profile_args+=("--assume-yes")
+        $DRY_RUN && profile_args+=("--dry-run")
+        exec "$SCRIPT_DIR/install-hyprland-headless.sh" "${profile_args[@]}"
+    fi
     preflight
     case "$ACTION" in
         install)   install_action ;;

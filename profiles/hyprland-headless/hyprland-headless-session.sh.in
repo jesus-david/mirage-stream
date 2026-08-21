@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly output_name="MIRAGE"
+readonly workspace_id="21"
+readonly config_file="@TARGET_HOME@/.config/sunshine/sunshine-hyprland.conf"
+readonly stream_stop="@TARGET_HOME@/.local/lib/mirage-stream/stream-stop.sh"
+
+created_output=false
+
+log() {
+    printf 'mirage-stream: %s\n' "$*" >&2
+}
+
+require_hyprland() {
+    [[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] || {
+        log "Hyprland is not the current desktop"
+        exit 1
+    }
+    [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || {
+        log "HYPRLAND_INSTANCE_SIGNATURE is missing"
+        exit 1
+    }
+}
+
+monitor_json() {
+    hyprctl -j monitors all
+}
+
+output_exists() {
+    monitor_json | jq -e --arg name "$output_name" '.[] | select(.name == $name)' >/dev/null
+}
+
+cleanup() {
+    "$stream_stop" >/dev/null 2>&1 || true
+    if $created_output && output_exists; then
+        hyprctl output remove "$output_name" >/dev/null 2>&1 || true
+    fi
+}
+
+trap cleanup EXIT INT TERM
+
+require_hyprland
+
+# Self-heal: if a previous session was killed or the machine was powered off
+# mid-stream, stream-stop.sh never ran and waybar (and the physical monitors)
+# can be left pointed at the virtual MIRAGE output. stream-stop.sh persists
+# its restore state to disk and no-ops if there is nothing to restore, so it
+# is safe to replay unconditionally before touching anything else.
+"$stream_stop" >/dev/null 2>&1 || true
+
+if ! output_exists; then
+    hyprctl output create headless "$output_name"
+    created_output=true
+fi
+
+hyprctl keyword monitor "$output_name,2560x1440@60,auto,1"
+hyprctl keyword workspace "$workspace_id,monitor:$output_name,default:true"
+
+mkdir -p "$(dirname "$config_file")"
+cat >"$config_file" <<EOF
+# Managed by mirage-stream --profile hyprland-headless.
+global_prep_cmd = [{"do":"@TARGET_HOME@/.local/lib/mirage-stream/stream-start.sh","undo":"@TARGET_HOME@/.local/lib/mirage-stream/stream-stop.sh"}]
+adapter_name = @RENDER_NODE@
+output_name = $output_name
+capture = wlr
+encoder = nvenc
+native_pen_touch = enabled
+EOF
+
+# Give Sunshine its Wayland display before locking the session. hypridle turns
+# the lock request into hyprlock according to the active Hyprland config.
+/usr/bin/sunshine "$config_file" &
+sunshine_pid=$!
+sleep 2
+if kill -0 "$sunshine_pid" 2>/dev/null; then
+    if [[ -n "${XDG_SESSION_ID:-}" ]]; then
+        loginctl lock-session "$XDG_SESSION_ID"
+    else
+        loginctl lock-session
+    fi
+fi
+
+wait "$sunshine_pid"
