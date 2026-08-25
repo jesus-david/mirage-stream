@@ -31,6 +31,18 @@ output_exists() {
     monitor_json | jq -e --arg name "$output_name" '.[] | select(.name == $name)' >/dev/null
 }
 
+# hyprctl keyword/dispatch (classic syntax) do not work on Hyprland's
+# non-legacy Lua config parser (dots-hyprland/end-4): they print
+# "keyword can't work with non-legacy parsers. Use eval." to stderr but still
+# exit 0, so a bare `set -e` script silently no-ops instead of failing loudly.
+# hyprctl eval + the hl.* Lua API (see ~/.config/hypr/hl.meta.lua) is the
+# supported replacement.
+hleval() {
+    local result
+    result="$(hyprctl eval "$1")"
+    [[ "$result" == "ok" ]] || log "hyprctl eval failed ('$result'): $1"
+}
+
 cleanup() {
     "$stream_stop" >/dev/null 2>&1 || true
     if $created_output && output_exists; then
@@ -43,19 +55,34 @@ trap cleanup EXIT INT TERM
 require_hyprland
 
 # Self-heal: if a previous session was killed or the machine was powered off
-# mid-stream, stream-stop.sh never ran and waybar (and the physical monitors)
-# can be left pointed at the virtual MIRAGE output. stream-stop.sh persists
-# its restore state to disk and no-ops if there is nothing to restore, so it
-# is safe to replay unconditionally before touching anything else.
+# mid-stream, stream-stop.sh never ran and the bar (and the physical
+# monitors) can be left pointed at the virtual MIRAGE output. stream-stop.sh
+# persists its restore state to disk and no-ops if there is nothing to
+# restore, so it is safe to replay unconditionally before touching anything
+# else.
 "$stream_stop" >/dev/null 2>&1 || true
 
 if ! output_exists; then
     hyprctl output create headless "$output_name"
     created_output=true
+    # A freshly created headless output needs a moment before Hyprland will
+    # accept an hl.monitor rule targeting it by name; without this, the very
+    # next hleval call below silently keeps the default 1920x1080 mode.
+    for _ in 1 2 3 4 5; do
+        output_exists && break
+        sleep 0.5
+    done
 fi
 
-hyprctl keyword monitor "$output_name,2560x1440@60,auto,1"
-hyprctl keyword workspace "$workspace_id,monitor:$output_name,default:true"
+# Position far from the real monitor layout, not "auto" (which places it
+# snugly adjacent to DP-5/DP-6): while idle -- service running, no client
+# connected yet, physical monitors still enabled -- "auto" placement let the
+# mouse cursor wander onto MIRAGE by accident, since there's nothing
+# physically displayed there. A monitor rectangle with a gap to every other
+# monitor is unreachable by normal cursor movement, but Sunshine's wlr
+# capture still works fine against it regardless of its coordinates.
+hleval "hl.monitor({ output = \"$output_name\", mode = \"2560x1440@60\", position = \"10000x0\", scale = 1 })"
+hleval "hl.workspace_rule({ workspace = \"$workspace_id\", monitor = \"$output_name\", default = true })"
 
 mkdir -p "$(dirname "$config_file")"
 cat >"$config_file" <<EOF

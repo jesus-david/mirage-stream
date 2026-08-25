@@ -3,33 +3,73 @@ set -euo pipefail
 
 readonly virtual_output="MIRAGE"
 # Persistent (not tmpfs) so a crash or power-off mid-stream leaves the
-# original waybar output on disk for the next hyprland-headless-session.sh
+# original monitor/bar state on disk for the next hyprland-headless-session.sh
 # to self-heal from, instead of losing it on reboot.
 readonly state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/mirage-stream"
 readonly state_file="$state_dir/physical-monitors.json"
-readonly waybar_config="$HOME/.config/waybar/configs/TOP-Codex-Minimal-Transparent"
-readonly waybar_state_file="$state_dir/waybar-output"
+readonly bar_config="$HOME/.config/illogical-impulse/config.json"
+readonly bar_state_file="$state_dir/bar-output"
+
+# hyprctl keyword/dispatch (classic syntax) do not work on Hyprland's
+# non-legacy Lua config parser (dots-hyprland/end-4): they print
+# "keyword can't work with non-legacy parsers. Use eval." to stderr but still
+# exit 0, so a bare `set -e` script silently no-ops instead of failing loudly.
+# hyprctl eval + the hl.* Lua API (see ~/.config/hypr/hl.meta.lua) is the
+# supported replacement.
+log() {
+    printf 'mirage-stream: %s\n' "$*" >&2
+}
+
+hleval() {
+    local result
+    result="$(hyprctl eval "$1")"
+    [[ "$result" == "ok" ]] || log "hyprctl eval failed ('$result'): $1"
+}
 
 ensure_virtual_output_scale() {
-    hyprctl keyword monitor "$virtual_output,preferred,auto,1.25"
+    # Explicit mode, not "preferred": a headless output has no real EDID, so
+    # Hyprland's "preferred" pick defaults to 1920x1080 instead of the
+    # 2560x1440@60 mode hyprland-headless-session.sh set at creation time.
+    # Same fixed far-away position as hyprland-headless-session.sh, kept
+    # consistent even though it's a no-op here in practice: by the time this
+    # runs, physical monitors are about to be disabled below, so MIRAGE ends
+    # up as the only enabled output and its coordinates stop mattering.
+    hleval "hl.monitor({ output = \"$virtual_output\", mode = \"2560x1440@60\", position = \"10000x0\", scale = 1.25 })"
     sleep 1
 }
 
 configure_remote_workspace_rules() {
     for workspace in {1..20}; do
-        hyprctl keyword workspace "$workspace, monitor:$virtual_output"
+        hleval "hl.workspace_rule({ workspace = \"$workspace\", monitor = \"$virtual_output\" })"
     done
 }
 
-switch_waybar_output() {
+# quickshell (dots-hyprland's bar) reads bar.screenList from this file with
+# hot-reload (watchChanges: true), so no service restart is needed here --
+# unlike the old waybar setup this replaces, which needed
+# `systemctl --user restart waybar.service` after editing its config.
+save_and_switch_bar_output() {
     local output="$1"
 
-    [[ -f "$waybar_config" ]] || return 0
+    [[ -f "$bar_config" ]] || return 0
 
-    WAYBAR_OUTPUT="$output" perl -0pi -e '
-        s{^(\s*"output"\s*:\s*)"[^"]+"}{$1 . q{"} . $ENV{WAYBAR_OUTPUT} . q{"}}me
-    ' "$waybar_config"
-    systemctl --user restart waybar.service
+    python3 - "$bar_config" "$output" "$bar_state_file" <<'PYEOF'
+import json, sys
+
+config_path, output, state_path = sys.argv[1], sys.argv[2], sys.argv[3]
+
+with open(config_path) as f:
+    config = json.load(f)
+
+bar = config.setdefault("bar", {})
+with open(state_path, "w") as f:
+    json.dump(bar.get("screenList", []), f)
+
+bar["screenList"] = [output]
+with open(config_path, "w") as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PYEOF
 }
 
 [[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] || exit 1
@@ -44,21 +84,11 @@ ensure_virtual_output_scale
 
 configure_remote_workspace_rules
 
-if [[ -f "$waybar_config" ]]; then
-    mapfile -t waybar_outputs < <(
-        sed -nE 's/^[[:space:]]*"output"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$waybar_config"
-    )
-    if (( ${#waybar_outputs[@]} == 1 )); then
-        printf '%s\n' "${waybar_outputs[0]}" >"$waybar_state_file"
-        switch_waybar_output "$virtual_output"
-    else
-        printf 'mirage-stream: Waybar output is not a single string; leaving it unchanged.\n' >&2
-    fi
-fi
+save_and_switch_bar_output "$virtual_output"
 
 jq -r '.[].name' "$state_file" | while IFS= read -r monitor; do
-    hyprctl keyword monitor "$monitor,disable"
+    hleval "hl.monitor({ output = \"$monitor\", disabled = true })"
 done
 
 sleep 1
-hyprctl dispatch workspace 1
+hleval 'hl.dispatch(hl.dsp.focus({ workspace = "1" }))'

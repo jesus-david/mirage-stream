@@ -8,6 +8,12 @@ Type=simple
 ExecStart=@TARGET_HOME@/.local/lib/mirage-stream/hyprland-headless-session.sh
 Restart=on-failure
 RestartSec=3
+# `systemctl stop` sends SIGTERM, so the wrapped sunshine process exits 143.
+# Without this, systemd marks a deliberate stop as "failed" instead of
+# "inactive" -- and a later `daemon-reload` (e.g. from re-running the
+# installer) can then trigger Restart=on-failure and bring the service back
+# up on its own, even though nothing asked it to.
+SuccessExitStatus=143
 
 [Install]
 WantedBy=graphical-session.target

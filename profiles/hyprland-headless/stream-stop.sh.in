@@ -3,8 +3,32 @@ set -euo pipefail
 
 readonly state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/mirage-stream"
 readonly state_file="$state_dir/physical-monitors.json"
-readonly waybar_config="$HOME/.config/waybar/configs/TOP-Codex-Minimal-Transparent"
-readonly waybar_state_file="$state_dir/waybar-output"
+readonly bar_config="$HOME/.config/illogical-impulse/config.json"
+readonly bar_state_file="$state_dir/bar-output"
+
+# hyprctl keyword/dispatch (classic syntax) do not work on Hyprland's
+# non-legacy Lua config parser (dots-hyprland/end-4): they print
+# "keyword can't work with non-legacy parsers. Use eval." to stderr but still
+# exit 0, so a bare `set -e` script silently no-ops instead of failing loudly.
+# hyprctl eval + the hl.* Lua API (see ~/.config/hypr/hl.meta.lua) is the
+# supported replacement.
+log() {
+    printf 'mirage-stream: %s\n' "$*" >&2
+}
+
+hleval() {
+    local result
+    result="$(hyprctl eval "$1")"
+    [[ "$result" == "ok" ]] || log "hyprctl eval failed ('$result'): $1"
+}
+
+restore_physical_monitors() {
+    [[ -f "$state_file" ]] || return 0
+    jq -r '.[] | "\(.name)\t\(.width)\t\(.height)\t\(.refreshRate)\t\(.x)\t\(.y)\t\(.scale)"' "$state_file" |
+        while IFS=$'\t' read -r name width height refresh x y scale; do
+            hleval "hl.monitor({ output = \"$name\", mode = \"${width}x${height}@${refresh}\", position = \"${x}x${y}\", scale = $scale, disabled = false })"
+        done
+}
 
 restore_local_workspace_rules() {
     hyprctl reload config-only
@@ -14,7 +38,7 @@ restore_local_workspace_rules() {
             9|10) local_monitor="DP-6" ;;
             *) local_monitor="DP-5" ;;
         esac
-        hyprctl keyword workspace "$workspace,monitor:$local_monitor"
+        hleval "hl.workspace_rule({ workspace = \"$workspace\", monitor = \"$local_monitor\" })"
     done
 }
 
@@ -28,44 +52,51 @@ restore_local_workspace_locations() {
             9|10) local_monitor="DP-6" ;;
             *) local_monitor="DP-5" ;;
         esac
-        hyprctl dispatch moveworkspacetomonitor "$workspace $local_monitor"
+        hleval "hl.dispatch(hl.dsp.workspace.move({ workspace = \"$workspace\", monitor = \"$local_monitor\" }))"
     done
 }
 
-switch_waybar_output() {
-    local output="$1"
+# Mirror of save_and_switch_bar_output in stream-start.sh: quickshell reads
+# bar.screenList from this file with hot-reload, no service restart needed.
+restore_bar_output() {
+    [[ -s "$bar_state_file" && -f "$bar_config" ]] || return 0
 
-    [[ -f "$waybar_config" ]] || return 0
+    python3 - "$bar_config" "$bar_state_file" <<'PYEOF'
+import json, sys
 
-    WAYBAR_OUTPUT="$output" perl -0pi -e '
-        s{^(\s*"output"\s*:\s*)"[^"]+"}{$1 . q{"} . $ENV{WAYBAR_OUTPUT} . q{"}}me
-    ' "$waybar_config"
-    systemctl --user restart waybar.service
+config_path, state_path = sys.argv[1], sys.argv[2]
+
+with open(state_path) as f:
+    screen_list = json.load(f)
+
+with open(config_path) as f:
+    config = json.load(f)
+
+config.setdefault("bar", {})["screenList"] = screen_list
+with open(config_path, "w") as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PYEOF
 }
 
 [[ -f "$state_file" ]] || exit 0
 [[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] || exit 1
 [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || exit 1
 
-jq -r '.[] | "\(.name),\(.width)x\(.height)@\(.refreshRate),\(.x)x\(.y),\(.scale)"' "$state_file" |
-    while IFS= read -r rule; do
-        hyprctl keyword monitor "$rule"
-    done
+restore_physical_monitors
 
 restore_local_workspace_rules
 
 restore_local_workspace_locations
 
 if hyprctl -j workspaces | jq -e '.[] | select(.id == 21)' >/dev/null; then
-    hyprctl dispatch moveworkspacetomonitor "21 MIRAGE"
+    hleval 'hl.dispatch(hl.dsp.workspace.move({ workspace = "21", monitor = "MIRAGE" }))'
 fi
 
-if [[ -s "$waybar_state_file" ]]; then
-    switch_waybar_output "$(<"$waybar_state_file")"
-fi
+restore_bar_output
 
 if [[ -x "$HOME/.config/hypr/scripts/WallpaperDaemon.sh" ]]; then
     "$HOME/.config/hypr/scripts/WallpaperDaemon.sh" &
 fi
 
-rm -f "$state_file" "$waybar_state_file"
+rm -f "$state_file" "$bar_state_file"

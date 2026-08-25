@@ -99,23 +99,25 @@ install_template() {
 }
 
 add_hyprland_startup() {
-    local startup="$TARGET_HOME/.config/hypr/UserConfigs/Startup_Apps.conf"
-    local marker='# >>> mirage-stream hyprland-headless >>>'
-    mkdir -p "$(dirname "$startup")"
-    touch "$startup"
-    grep -qF "$marker" "$startup" && return 0
-    cat >>"$startup" <<'EOF'
-
-# >>> mirage-stream hyprland-headless >>>
-exec-once = $HOME/.local/lib/mirage-stream/start-hyprland-headless.sh
-# <<< mirage-stream hyprland-headless <<<
-EOF
+    # dots-hyprland/end-4's non-legacy Lua config never sources
+    # UserConfigs/Startup_Apps.conf (that's a JaKooLit-era include path), so
+    # an exec-once written there is silently never run.
+    #
+    # custom/execs.lua looked like the natural replacement, but it is NOT
+    # exec-once semantics: end-4 re-sources every custom/*.lua file (running
+    # every top-level hl.exec_cmd() call again) whenever that file's mtime
+    # changes -- confirmed by a bare `touch` on the file alone restarting
+    # this service with no content change at all. Any future edit to
+    # execs.lua (by this installer, by hand, by anything) would silently
+    # relaunch mirage-stream-hyprland.service. systemd's own [Install]
+    # WantedBy=graphical-session.target is what "start once per session"
+    # actually means, and it's completely decoupled from Hyprland's config
+    # file watching.
+    systemctl --user enable mirage-stream-hyprland.service
 }
 
 remove_hyprland_startup() {
-    local startup="$TARGET_HOME/.config/hypr/UserConfigs/Startup_Apps.conf"
-    [[ -f "$startup" ]] || return 0
-    sed -i '/# >>> mirage-stream hyprland-headless >>>/,/# <<< mirage-stream hyprland-headless <<</d' "$startup"
+    systemctl --user disable mirage-stream-hyprland.service 2>/dev/null || true
 }
 
 write_compatibility_scripts() {
@@ -174,8 +176,6 @@ install_profile() {
     backup_path "$lib_dir/hyprland-headless-session.sh"
     backup_path "$lib_dir/stream-start.sh"
     backup_path "$lib_dir/stream-stop.sh"
-    backup_path "$TARGET_HOME/.config/waybar/configs/TOP-Codex-Minimal-Transparent"
-    backup_path "$TARGET_HOME/.config/hypr/UserConfigs/Startup_Apps.conf"
 
     install_template "$SCRIPT_DIR/profiles/hyprland-headless/mirage-stream-hyprland.service.in" \
         "$unit_dir/mirage-stream-hyprland.service" 0644
