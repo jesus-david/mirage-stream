@@ -44,11 +44,10 @@ Las copias previas de los archivos de usuario se guardan en
    workspace 21.
 3. Lanza Sunshine con `~/.config/sunshine/sunshine-hyprland.conf`
    (`output_name = MIRAGE`, `capture = wlr`, encoder `nvenc`).
-4. Intenta bloquear la sesion (`loginctl lock-session`) — **actualmente esto
-   no bloquea de verdad en un sistema end-4/dots-hyprland**, ver "Problemas
-   conocidos" abajo. Mientras tanto, el escritorio real (`DP-5`/`DP-6` o los
-   nombres que corresponda) sigue visible e interactivo, con `MIRAGE` como
-   monitor adicional.
+4. Bloquea la sesion: pide `loginctl lock-session` y, un segundo despues, si
+   `hyprlock` todavia no quedo corriendo (la cadena `hypridle`→`quickshell`
+   puede estar rota segun la config, ver "Problemas conocidos"), lo lanza
+   directo el propio script como garantia.
 
 Al conectar un cliente Moonlight (via `global_prep_cmd` de Sunshine,
 `stream-start.sh`/`stream-stop.sh`):
@@ -83,6 +82,28 @@ los monitores fisicos deben permanecer activos y sin cambios. Conectar por
 Moonlight, verificar que se ve el escritorio remoto, desconectar, y
 verificar que los monitores fisicos y `MIRAGE` volvieron a su estado previo
 (`hyprctl monitors all` de nuevo).
+
+## Actualizar
+
+```bash
+cd ~/dev/mirage-stream
+git pull
+./install-hyprland-headless.sh install -y
+./install-hyprland-headless.sh doctor
+```
+
+Reinstalar encima de una instalacion existente es seguro — todo lo que este
+instalador toca es idempotente (marcadores para los bloques que agrega en
+`custom/execs.lua`-equivalentes, `install -D` para los archivos generados,
+etc.), confirmado corriendolo varias veces seguidas durante el desarrollo.
+
+`doctor` es un chequeo de solo lectura (no pide `sudo`, no cambia nada) que
+confirma: que `hyprctl eval` responde (parser no-legacy presente), que el
+servicio esta `enabled`, que la regla de posicion de `MIRAGE` esta persistida
+en la config de Hyprland, y que `sunshine-hyprland.conf` apunta a los
+scripts actuales. Util para correr despues de cualquier `git pull` +
+reinstalacion, antes de confiar en que Moonlight va a conectar sin
+sorpresas.
 
 ## Desinstalacion
 
@@ -150,11 +171,14 @@ pegado al monitor real mas cercano — el mouse puede "perderse" ahi (nada se
 renderiza visualmente en un output sin pantalla fisica). Ademas,
 `stream-stop.sh` llama a `hyprctl reload config-only` al desconectar, lo
 cual **relee los archivos de config desde disco y pisa cualquier posicion
-puesta solo en runtime**, volviendo al default `auto`. La solucion real
-requiere una regla `hl.monitor({output="MIRAGE", position="<algo lejano,
-ej. 10000x0>", ...})` persistida en la config de Hyprland del usuario (por
-ejemplo `~/.config/hypr/custom/general.lua` en end-4) — **este repositorio
-todavia no lo automatiza**, ver TODO abajo.
+puesta solo en runtime**, volviendo al default `auto`. **Resuelto:** el
+instalador agrega una regla `hl.monitor({output="MIRAGE", position="100000x0",
+...})` persistida en `~/.config/hypr/custom/general.lua` (marcador
+`>>> mirage-stream hyprland-headless >>>`, mismo mecanismo idempotente que
+`add_hyprland_startup`), asi que sobrevive a cualquier `hyprctl reload`. Es
+seguro que Hyprland re-lea ese bloque en cada cambio de archivo: a
+diferencia de un `hl.exec_cmd` (ver punto 3), una regla de monitor no tiene
+efecto secundario al reaplicarse.
 
 **6. El bloqueo de sesion (`loginctl lock-session`) no dispara `hyprlock`
 en esta config de end-4.** El `$lock_cmd` que trae `hypridle.conf` por
@@ -167,20 +191,15 @@ escritorio, que corre todo el tiempo), asi que el fallback `|| hyprlock`
 nunca se ejecuta, y todo depende de que quickshell efectivamente muestre su
 propia pantalla de bloqueo al recibir la señal `quickshell:lock` — cosa que
 no esta pasando. Esto es un bug preexistente del `hypridle.conf` base de
-dots-hyprland, no algo que este perfil rompa, pero significa que **el
-servicio queda "esperando conexion" con el escritorio real desbloqueado e
-interactivo**, no oculto detras de un lock screen como sugiere el paso 4
-del flujo de inicio. Sin arreglar esto, no depender del bloqueo como unica
-proteccion de privacidad mientras el servicio esta activo sin cliente
-conectado.
+dots-hyprland, no algo que este perfil rompa. **Mitigado:**
+`hyprland-headless-session.sh` ya no depende solo de esa cadena — sigue
+pidiendo `loginctl lock-session` (por si algo mas lo escucha), pero un
+segundo despues chequea si `hyprlock` quedo corriendo y, si no, lo lanza
+directo. La causa raiz en `hypridle.conf` sigue sin arreglarse (es config
+del usuario/de dots-hyprland, no de este proyecto).
 
 ### TODO / mejoras pendientes
 
-- Automatizar el punto 5 (posicion persistida de `MIRAGE`) desde el
-  instalador en vez de requerir un edit manual en la config de Hyprland del
-  usuario.
-- Arreglar o documentar mejor el punto 6 (lock screen), o cambiar el paso 4
-  del flujo de inicio para no depender de el.
 - Confirmar si los puntos 1-4 aplican igual en dotfiles de Hyprland no
   basados en end-4 (JaKooLit u otros con `hyprland.conf` plano/parser
   legacy) — probablemente el perfil completo necesite una rama de

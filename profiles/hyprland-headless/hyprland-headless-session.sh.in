@@ -95,8 +95,15 @@ encoder = nvenc
 native_pen_touch = enabled
 EOF
 
-# Give Sunshine its Wayland display before locking the session. hypridle turns
-# the lock request into hyprlock according to the active Hyprland config.
+# Give Sunshine its Wayland display before locking the session. hypridle
+# normally turns the loginctl lock request into hyprlock, but that chain can
+# be broken depending on the active Hyprland config -- e.g. dots-hyprland's
+# default hypridle.conf lock_cmd checks `pidof qs quickshell hyprlock` before
+# falling back to hyprlock, and quickshell is always running as the desktop
+# shell, so the fallback never fires if quickshell's own lock screen doesn't
+# come up. Don't rely on that chain alone: still ask logind properly (other
+# tools may care about LockedHint), but also make sure hyprlock itself ends
+# up running a moment later regardless of whether anything reacted to it.
 /usr/bin/sunshine "$config_file" &
 sunshine_pid=$!
 sleep 2
@@ -106,6 +113,8 @@ if kill -0 "$sunshine_pid" 2>/dev/null; then
     else
         loginctl lock-session
     fi
+    sleep 1
+    pidof hyprlock >/dev/null 2>&1 || hyprlock &
 fi
 
 wait "$sunshine_pid"

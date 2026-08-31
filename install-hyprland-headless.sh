@@ -11,17 +11,25 @@ TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 TIMESTAMP="$(date +%Y%m%dT%H%M%SZ)"
 BACKUP_ROOT="$TARGET_HOME/.local/share/mirage-stream/backups/hyprland-headless-$TIMESTAMP"
 RENDER_NODE=
+MONITOR_RULE_MARKER_BEGIN='-- >>> mirage-stream hyprland-headless >>>'
+MONITOR_RULE_MARKER_END='-- <<< mirage-stream hyprland-headless <<<'
 
 log() { printf '[*] %s\n' "$*"; }
 ok() { printf '[+] %s\n' "$*"; }
+warn() { printf '[!] %s\n' "$*"; }
 die() { printf '[!] %s\n' "$*" >&2; exit 1; }
 
 usage() {
     cat <<'EOF'
-Usage: install-hyprland-headless.sh [uninstall] [--remote-first] [-y]
+Usage: install-hyprland-headless.sh [install|uninstall|doctor] [--remote-first] [-y]
 
 Installs Sunshine as a Hyprland session service with a 2560x1440@60 headless
 output. It never adds a kernel EDID or a forced DRM connector.
+
+  install     (default) Install/update the profile.
+  uninstall   Remove it.
+  doctor      Read-only health check -- run after installing or after a
+              `git pull` to confirm the profile is still wired up correctly.
 EOF
 }
 
@@ -35,7 +43,7 @@ confirm() {
 parse_args() {
     while (( $# )); do
         case "$1" in
-            install|uninstall) ACTION="$1" ;;
+            install|uninstall|doctor) ACTION="$1" ;;
             --remote-first) REMOTE_FIRST=true ;;
             -y|--assume-yes) ASSUME_YES=true ;;
             --dry-run) die "--dry-run is not supported for hyprland-headless; it must be run from a live Hyprland session" ;;
@@ -120,6 +128,40 @@ remove_hyprland_startup() {
     systemctl --user disable mirage-stream-hyprland.service 2>/dev/null || true
 }
 
+add_hyprland_monitor_rule() {
+    # MIRAGE gets created and stays enabled for the whole time the service
+    # runs, not just during an active stream, so with Hyprland's default
+    # `position = "auto"` it lands snugly adjacent to a real monitor -- the
+    # mouse cursor can wander onto it and "disappear" (nothing is physically
+    # displayed there). A one-off `hyprctl eval` fix doesn't stick either:
+    # stream-stop.sh runs `hyprctl reload config-only` on every disconnect,
+    # which re-reads this file from disk and overwrites anything set only at
+    # runtime back to the wildcard default. This rule has to live in the
+    # user's actual Hyprland config.
+    #
+    # Unlike the old custom/execs.lua approach for auto-start (see
+    # add_hyprland_startup above), this is safe to have end-4 re-source on
+    # every file-watch reload: hl.monitor() is a declarative rule, not a
+    # command with a side effect like launching a process, so re-applying it
+    # is a no-op.
+    local target="$TARGET_HOME/.config/hypr/custom/general.lua"
+    mkdir -p "$(dirname "$target")"
+    touch "$target"
+    grep -qF -- "$MONITOR_RULE_MARKER_BEGIN" "$target" && return 0
+    cat >>"$target" <<EOF
+
+$MONITOR_RULE_MARKER_BEGIN
+hl.monitor({ output = "MIRAGE", mode = "2560x1440@60", position = "100000x0", scale = 1 })
+$MONITOR_RULE_MARKER_END
+EOF
+}
+
+remove_hyprland_monitor_rule() {
+    local target="$TARGET_HOME/.config/hypr/custom/general.lua"
+    [[ -f "$target" ]] || return 0
+    sed -i "/$(printf '%s' "$MONITOR_RULE_MARKER_BEGIN" | sed 's/[.[\*^$]/\\&/g')/,/$(printf '%s' "$MONITOR_RULE_MARKER_END" | sed 's/[.[\*^$]/\\&/g')/d" "$target"
+}
+
 write_compatibility_scripts() {
     local scripts="$TARGET_HOME/.config/sunshine/scripts"
     mkdir -p "$scripts"
@@ -176,6 +218,7 @@ install_profile() {
     backup_path "$lib_dir/hyprland-headless-session.sh"
     backup_path "$lib_dir/stream-start.sh"
     backup_path "$lib_dir/stream-stop.sh"
+    backup_path "$TARGET_HOME/.config/hypr/custom/general.lua"
 
     install_template "$SCRIPT_DIR/profiles/hyprland-headless/mirage-stream-hyprland.service.in" \
         "$unit_dir/mirage-stream-hyprland.service" 0644
@@ -206,6 +249,7 @@ EOF
     [[ -f "$autostart_dir/lock-on-start.desktop" ]] && \
         mv "$autostart_dir/lock-on-start.desktop" "$autostart_dir/lock-on-start.desktop.disabled-mirage-stream-$TIMESTAMP"
     add_hyprland_startup
+    add_hyprland_monitor_rule
 
     systemctl --user disable --now app-dev.lizardbyte.app.Sunshine.service
     systemctl --user daemon-reload
@@ -222,6 +266,7 @@ uninstall_profile() {
     rm -f "$TARGET_HOME/.local/lib/mirage-stream/stream-start.sh"
     rm -f "$TARGET_HOME/.local/lib/mirage-stream/stream-stop.sh"
     remove_hyprland_startup
+    remove_hyprland_monitor_rule
     systemctl --user daemon-reload
     if sudo test -e /etc/plasmalogin.conf.d/99-mirage-hyprland-autologin.conf; then
         sudo rm /etc/plasmalogin.conf.d/99-mirage-hyprland-autologin.conf
@@ -229,8 +274,57 @@ uninstall_profile() {
     ok "Hyprland profile disabled. User-config backups remain under $TARGET_HOME/.local/share/mirage-stream/backups/."
 }
 
+check_hl_eval() {
+    local result
+    result="$(hyprctl eval 'hl.get_active_workspace()' 2>&1)" || true
+    if [[ "$result" == "ok" ]]; then
+        ok "hyprctl eval + the hl.* Lua API responds (non-legacy Hyprland config detected)"
+        return 0
+    fi
+    warn "hyprctl eval did not return 'ok' (got: '$result') -- this profile requires a non-legacy (Lua) Hyprland config such as end-4/dots-hyprland; hyprctl keyword/dispatch-based scripts will silently no-op otherwise"
+    return 1
+}
+
+doctor_action() {
+    [[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" && -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || \
+        die "Run this from an active Hyprland session"
+
+    local pass=0 total=4
+
+    check_hl_eval && pass=$((pass + 1))
+
+    if systemctl --user is-enabled mirage-stream-hyprland.service >/dev/null 2>&1; then
+        ok "mirage-stream-hyprland.service is enabled (auto-starts with graphical-session.target)"
+        pass=$((pass + 1))
+    else
+        warn "mirage-stream-hyprland.service is not enabled -- it won't auto-start next session. Run: $0 install"
+    fi
+
+    local general_lua="$TARGET_HOME/.config/hypr/custom/general.lua"
+    if [[ -f "$general_lua" ]] && grep -qF -- "$MONITOR_RULE_MARKER_BEGIN" "$general_lua"; then
+        ok "MIRAGE position rule is persisted in custom/general.lua"
+        pass=$((pass + 1))
+    else
+        warn "MIRAGE position rule is missing from $general_lua -- MIRAGE may end up placed next to a real monitor (mouse can wander onto it) after any hyprctl reload. Run: $0 install"
+    fi
+
+    local sunshine_conf="$TARGET_HOME/.config/sunshine/sunshine-hyprland.conf"
+    local lib_dir="$TARGET_HOME/.local/lib/mirage-stream"
+    if [[ -f "$sunshine_conf" ]] && grep -qF "$lib_dir/stream-start.sh" "$sunshine_conf" && grep -qF "$lib_dir/stream-stop.sh" "$sunshine_conf"; then
+        ok "sunshine-hyprland.conf points at the current stream-start.sh/stream-stop.sh"
+        pass=$((pass + 1))
+    else
+        warn "$sunshine_conf is missing or doesn't reference $lib_dir/stream-start.sh + stream-stop.sh. Run: $0 install"
+    fi
+
+    echo
+    log "$pass/$total checks OK"
+    [[ "$pass" -eq "$total" ]]
+}
+
 parse_args "$@"
 case "$ACTION" in
     install) install_profile ;;
     uninstall) uninstall_profile ;;
+    doctor) doctor_action ;;
 esac
