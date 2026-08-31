@@ -56,6 +56,22 @@ restore_local_workspace_locations() {
     done
 }
 
+# If none of a monitor's assigned workspaces (e.g. 9/10 for DP-6) was
+# visited during the stream, restore_local_workspace_locations has nothing
+# to move there, so that monitor stays on whatever it had during the
+# stream and Hyprland fills it with a fresh out-of-range workspace (e.g.
+# 23) -- desyncing the bar's workspace numbering (bug seen 2026-08-03,
+# 2026-08-11, 2026-08-29). Force-focus each monitor's default workspace,
+# then restore whatever was actually focused.
+restore_default_workspace_focus() {
+    local previous_workspace
+    previous_workspace="$(hyprctl -j activeworkspace | jq -r '.id')"
+
+    hleval 'hl.dispatch(hl.dsp.focus({ workspace = "1" }))'
+    hleval 'hl.dispatch(hl.dsp.focus({ workspace = "9" }))'
+    hleval "hl.dispatch(hl.dsp.focus({ workspace = \"$previous_workspace\" }))"
+}
+
 # Mirror of save_and_switch_bar_output in stream-start.sh: quickshell reads
 # bar.screenList from this file with hot-reload, no service restart needed.
 restore_bar_output() {
@@ -88,6 +104,8 @@ restore_physical_monitors
 restore_local_workspace_rules
 
 restore_local_workspace_locations
+
+restore_default_workspace_focus
 
 if hyprctl -j workspaces | jq -e '.[] | select(.id == 21)' >/dev/null; then
     hleval 'hl.dispatch(hl.dsp.workspace.move({ workspace = "21", monitor = "MIRAGE" }))'
