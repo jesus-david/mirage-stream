@@ -28,6 +28,11 @@ restore_physical_monitors() {
         while IFS=$'\t' read -r name width height refresh x y scale; do
             hleval "hl.monitor({ output = \"$name\", mode = \"${width}x${height}@${refresh}\", position = \"${x}x${y}\", scale = $scale, disabled = false })"
         done
+
+    # Re-enabling a monitor (disabled=false) does not wake it: Hyprland
+    # keeps whatever DPMS power state the connector was left in, so it
+    # can come back dark even though it's enabled (seen 2026-08-31).
+    hleval 'hl.dispatch(hl.dsp.dpms("on"))'
 }
 
 restore_local_workspace_rules() {
