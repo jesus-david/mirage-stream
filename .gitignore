@@ -9,3 +9,7 @@ virtual.bin
 
 # Backups created by install.sh
 *.bak.*
+
+# Python bytecode from the test harness
+__pycache__/
+*.pyc

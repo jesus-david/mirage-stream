@@ -297,6 +297,22 @@ Como el conector virtual es la **única pantalla activa** durante el streaming, 
 - **Desinstalar (Fedora)**: `./install.sh uninstall` revierte todos los cambios (kernel args, initramfs, firmware, autologin, scripts).
 - Este setup está basado en el [gist de HarryAnkers](https://gist.github.com/HarryAnkers/8dbf551d66f00e8156ef4dd2b2b090a0) con investigación adicional sobre integración con KDE Wayland, scripts de conexión/desconexión, y el fallo de VKMS con NVIDIA.
 
+## Trabajar sobre este repo
+
+```bash
+./verificar.sh --rapido    # las reglas del proyecto, ejecutables — no toca el sistema
+./verificar.sh             # además compara el repo con lo instalado en esta máquina
+```
+
+Leé [AGENTS.md](AGENTS.md) antes de cambiar nada: están ahí las reglas que es fácil
+romper sin querer, cada una con su prueba en
+[tests/test_reglas.py](tests/test_reglas.py). El porqué de cada decisión está en
+[docs/decisions.md](docs/decisions.md), y lo que quedó abierto en
+[docs/pendientes.md](docs/pendientes.md).
+
+Hoy hay dos comprobaciones en rojo a propósito: son hallazgos abiertos, no pruebas
+mal escritas.
+
 ## Licencia
 
 MIT

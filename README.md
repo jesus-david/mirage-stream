@@ -299,6 +299,21 @@ Because the virtual connector is the **only active display** during streaming, a
 - **Uninstall (Fedora)**: `./install.sh uninstall` reverts all changes (kernel args, initramfs, firmware, autologin, scripts).
 - This setup was derived from [HarryAnkers' gist](https://gist.github.com/HarryAnkers/8dbf551d66f00e8156ef4dd2b2b090a0) with additional research on KDE Wayland integration, connect/disconnect scripting, and the VKMS failure mode on NVIDIA.
 
+## Working on this repo
+
+```bash
+./verificar.sh --rapido    # the project's rules, as executable checks — touches nothing
+./verificar.sh             # also compares this repo against what's installed on this machine
+```
+
+Read [AGENTS.md](AGENTS.md) before changing anything: it holds the rules that are easy
+to break by accident, each one backed by a test in
+[tests/test_reglas.py](tests/test_reglas.py). Why the project ended up this way is in
+[docs/decisions.md](docs/decisions.md); what's still open is in
+[docs/pendientes.md](docs/pendientes.md).
+
+Two checks are red on purpose today — they are open findings, not broken tests.
+
 ## License
 
 MIT
