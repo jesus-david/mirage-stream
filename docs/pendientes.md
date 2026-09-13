@@ -61,6 +61,17 @@ es una intención — y no entra.
   se comprueba. Primer paso: reemplazar la condición por una que verifique que la regla
   se aplicó (leer `mode` de `hyprctl -j monitors` hasta que sea 2560x1440). — 2026-09-08
 
+- [ ] **Con MIRAGE siempre creado, los juegos X11 entran a pantalla completa en él y
+  pierden el mouse.** XWayland lista MIRAGE como monitor 0 sin primary, y Valheim
+  (`UnitySelectMonitor=0`) queda en un output al que el cursor no llega. Workaround
+  verificado a mano: `xrandr --output DP-5 --primary`. No persiste, y probablemente se
+  pierde cuando `stream-start.sh` deshabilita DP-5. Primer paso: después del
+  `hyprctl output create headless` (`hyprland-headless-session.sh.in:66`) y al final de
+  `restore_physical_monitors` (`stream-stop.sh.in`), marcar como primary el monitor
+  físico sacado de `physical-monitors.json`, no DP-5 fijo (ver el pendiente de
+  hardcodeo). Verificar con `xrandr --listmonitors` antes y después de una sesión
+  Moonlight. — 2026-09-12
+
 ### Cobertura
 
 - [ ] **El perfil `kde-kms` no tiene ninguna prueba de comportamiento.** El arnés sólo
