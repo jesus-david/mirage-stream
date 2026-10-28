@@ -26,15 +26,35 @@ hleval() {
     [[ "$result" == "ok" ]] || log "hyprctl eval failed ('$result'): $1"
 }
 
+# The virtual output must refresh at least as fast as the stream the client
+# asked for: a 60 Hz MIRAGE caps a 90/120 fps stream at 60 no matter how fast
+# the game renders. Sunshine exports the client's request to global_prep_cmd as
+# SUNSHINE_CLIENT_FPS; anything missing or outside 30-240 falls back to 60, the
+# mode hyprland-headless-session.sh creates the output with.
+client_refresh() {
+    local fps="${SUNSHINE_CLIENT_FPS:-}"
+
+    if [[ "$fps" =~ ^[0-9]+$ ]] && ((fps >= 30 && fps <= 240)); then
+        printf '%s' "$fps"
+    else
+        printf '60'
+    fi
+}
+
 ensure_virtual_output_scale() {
+    local refresh
+    refresh="$(client_refresh)"
+    log "client ${SUNSHINE_CLIENT_WIDTH:-?}x${SUNSHINE_CLIENT_HEIGHT:-?}@${SUNSHINE_CLIENT_FPS:-?}" \
+        "host_audio=${SUNSHINE_CLIENT_HOST_AUDIO:-?}; MIRAGE refresh set to $refresh"
+
     # Explicit mode, not "preferred": a headless output has no real EDID, so
     # Hyprland's "preferred" pick defaults to 1920x1080 instead of the
-    # 2560x1440@60 mode hyprland-headless-session.sh set at creation time.
+    # 2560x1440 mode hyprland-headless-session.sh set at creation time.
     # Same fixed far-away position as hyprland-headless-session.sh, kept
     # consistent even though it's a no-op here in practice: by the time this
     # runs, physical monitors are about to be disabled below, so MIRAGE ends
     # up as the only enabled output and its coordinates stop mattering.
-    hleval "hl.monitor({ output = \"$virtual_output\", mode = \"2560x1440@60\", position = \"10000x0\", scale = 1.25 })"
+    hleval "hl.monitor({ output = \"$virtual_output\", mode = \"2560x1440@$refresh\", position = \"10000x0\", scale = 1.25 })"
     sleep 1
 }
 

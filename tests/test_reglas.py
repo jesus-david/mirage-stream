@@ -206,6 +206,47 @@ class ReglasDelPerfilHyprland(unittest.TestCase):
                 )
 
 
+class ComportamientoDeStreamStart(unittest.TestCase):
+    """El refresco de MIRAGE sigue al cliente en vez de quedar fijo en 60 Hz."""
+
+    ARCHIVO = PERFIL / "stream-start.sh.in"
+
+    def _client_refresh(self, fps):
+        texto = self.ARCHIVO.read_text(encoding="utf-8")
+        funcion = re.search(r"(?ms)^client_refresh\(\) \{.*?^\}$", texto)
+        self.assertIsNotNone(funcion, "stream-start.sh.in ya no define client_refresh")
+        entorno = {"PATH": "/usr/bin:/bin"}
+        if fps is not None:
+            entorno["SUNSHINE_CLIENT_FPS"] = fps
+        resultado = subprocess.run(
+            ["bash", "-c", f"set -euo pipefail\n{funcion.group(0)}\nclient_refresh"],
+            env=entorno, capture_output=True, text=True, check=True,
+        )
+        return resultado.stdout
+
+    def test_el_refresco_sale_del_fps_que_pide_el_cliente(self):
+        """«Un MIRAGE a 60 Hz capa un stream de 90 o 120 fps.»
+
+        Sunshine exporta SUNSHINE_CLIENT_FPS a global_prep_cmd. Lo que falta o
+        sale del rango 30-240 cae a 60, el modo con el que se crea el output.
+        """
+        casos = {
+            None: "60", "": "60", "60": "60", "90": "90", "120": "120",
+            "240": "240", "30": "30", "241": "60", "29": "60", "abc": "60",
+            "90.5": "60", "-5": "60",
+        }
+        for fps, esperado in casos.items():
+            with self.subTest(SUNSHINE_CLIENT_FPS=fps):
+                self.assertEqual(self._client_refresh(fps), esperado)
+
+    def test_el_modo_de_mirage_en_stream_start_no_fija_60_hz(self):
+        """Un `@60` literal en el modo de stream-start.sh.in vuelve a capar el stream."""
+        self.assertNotRegex(
+            codigo(self.ARCHIVO), r"2560x1440@60",
+            "stream-start.sh.in fija MIRAGE a 60 Hz: usar client_refresh",
+        )
+
+
 class ComportamientoDelBloqueoDeSesion(unittest.TestCase):
     """Un reinicio automatico tras una caida de Sunshine no bloquea el escritorio."""
 

@@ -110,6 +110,23 @@ se hizo cargo.
 
 No actives `--remote-first` en una máquina que no esté en una red de confianza.
 
+## Por qué MIRAGE refresca a lo que pide el cliente
+
+MIRAGE se creaba y se fijaba siempre a `2560x1440@60`. Con Moonlight pidiendo 90 o 120
+fps el stream salía igual a 60: el output virtual es lo que Sunshine captura, y un
+compositor a 60 Hz no le entrega más cuadros aunque el juego los renderice.
+
+`stream-start.sh` ahora toma el refresco de `SUNSHINE_CLIENT_FPS`, que Sunshine exporta
+a `global_prep_cmd`, y cae a 60 si falta o sale de 30-240. Hyprland acepta cualquier
+refresco en un output headless: probado el 2026-09-19 con 90 y 120, que quedaron
+exactos. La creación del output en `hyprland-headless-session.sh` sigue en 60 a
+propósito, es el valor por defecto entre sesiones, y `stream-stop.sh` vuelve a él al
+recargar el config.
+
+El script deja en el journal lo que Sunshine le pasó (`client WxH@FPS host_audio=…`).
+Sirve para comprobar que la variable llega de verdad: en el momento de escribir esto
+sólo se conocía por la documentación de Sunshine, no por una sesión real.
+
 ## Por qué un reinicio por fallo no bloquea la sesión
 
 `hyprland-headless-session.sh` bloqueaba el escritorio en cada arranque. Sunshine 2026.516
