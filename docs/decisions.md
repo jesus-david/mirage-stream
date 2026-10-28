@@ -109,3 +109,21 @@ obliga a desbloquear dos veces, y por eso la comprobación mira también si quic
 se hizo cargo.
 
 No actives `--remote-first` en una máquina que no esté en una red de confianza.
+
+## Por qué un reinicio por fallo no bloquea la sesión
+
+`hyprland-headless-session.sh` bloqueaba el escritorio en cada arranque. Sunshine 2026.516
+se cae con SIGSEGV al terminar una app (tres veces el 2026-09-19, en `nvhttp::cancel →
+proc_t::terminate`), systemd lo reinicia (`Restart=on-failure`) y cada reinicio dejaba al
+usuario frente a la pantalla de bloqueo de Quickshell sin haber hecho nada.
+
+Ahora `should_lock_session` bloquea sólo si `NRestarts` es 0: un arranque de la máquina, un
+inicio manual o una instalación siguen bloqueando, y un reinicio automático tras una caída
+deja la sesión como estaba, abierta o bloqueada. Si el contador no se puede leer se bloquea:
+ante la duda, el lado seguro. Es una contrapartida de seguridad y por eso la decidió el
+usuario: tras una caída de Sunshine con la sesión abierta, esta queda abierta hasta que algo
+la bloquee. No arregla la caída, sólo que no arrastre al escritorio.
+
+Un `systemctl --user restart` a mano pone el contador en 0 y vuelve a bloquear. Probado con un
+`systemctl` falso (0, 1, 7, vacío, no numérico y con error) y con el real; no con una caída
+real de Sunshine.

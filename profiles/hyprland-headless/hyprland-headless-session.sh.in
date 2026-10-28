@@ -103,6 +103,18 @@ if [[ -f "$extra_config_file" ]]; then
     cat "$extra_config_file" >>"$config_file"
 fi
 
+# Lock only on a fresh start. Sunshine can segfault when an app ends, and systemd
+# then restarts this service (Restart=on-failure); locking again on that restart
+# threw the user out of the desktop every time. systemd counts automatic restarts
+# in NRestarts, which stays 0 for a boot, a manual start or an install, so those
+# still lock. If the counter cannot be read the answer is "lock": the safe side.
+should_lock_session() {
+    local restarts
+    restarts="$(systemctl --user show -p NRestarts --value mirage-stream-hyprland.service 2>/dev/null)" || return 0
+    [[ "$restarts" =~ ^[0-9]+$ ]] || return 0
+    ((restarts == 0))
+}
+
 # Give Sunshine its Wayland display before locking the session. hypridle's
 # lock_cmd turns the loginctl lock request into Quickshell's own lock screen
 # (qs -c ii is always running as the desktop shell), which already
@@ -113,13 +125,17 @@ fi
 sunshine_pid=$!
 sleep 2
 if kill -0 "$sunshine_pid" 2>/dev/null; then
-    if [[ -n "${XDG_SESSION_ID:-}" ]]; then
-        loginctl lock-session "$XDG_SESSION_ID"
+    if should_lock_session; then
+        if [[ -n "${XDG_SESSION_ID:-}" ]]; then
+            loginctl lock-session "$XDG_SESSION_ID"
+        else
+            loginctl lock-session
+        fi
+        sleep 1
+        pidof hyprlock >/dev/null 2>&1 || pgrep -f '^qs ' >/dev/null 2>&1 || hyprlock &
     else
-        loginctl lock-session
+        echo "mirage-stream: restarted after a failure; session lock skipped" >&2
     fi
-    sleep 1
-    pidof hyprlock >/dev/null 2>&1 || pgrep -f '^qs ' >/dev/null 2>&1 || hyprlock &
 fi
 
 wait "$sunshine_pid"

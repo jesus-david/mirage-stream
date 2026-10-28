@@ -206,6 +206,56 @@ class ReglasDelPerfilHyprland(unittest.TestCase):
                 )
 
 
+class ComportamientoDelBloqueoDeSesion(unittest.TestCase):
+    """Un reinicio automatico tras una caida de Sunshine no bloquea el escritorio."""
+
+    ARCHIVO = PERFIL / "hyprland-headless-session.sh.in"
+
+    def _bloquea(self, salida, codigo=0):
+        texto = self.ARCHIVO.read_text(encoding="utf-8")
+        funcion = re.search(r"(?ms)^should_lock_session\(\) \{.*?^\}$", texto)
+        self.assertIsNotNone(funcion, "el script de sesion ya no define should_lock_session")
+        # systemctl falso como funcion de shell, no como archivo: ejecutar un script recien
+        # escrito puede dar "Text file busy", y la funcion lo leeria como "no se pudo leer".
+        falso = f'systemctl() {{ printf "%s\\n" "{salida}"; return {codigo}; }}'
+        resultado = subprocess.run(
+            ["bash", "-c", f"set -euo pipefail\n{falso}\n{funcion.group(0)}\n"
+                           "if should_lock_session; then exit 0; else exit 1; fi"],
+            env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True,
+        )
+        return resultado.returncode == 0
+
+    def test_solo_un_arranque_normal_bloquea(self):
+        """«Reiniciar por fallo no bloquea; un arranque normal si.»
+
+        Sunshine se cae al terminar una app y systemd lo reinicia
+        (Restart=on-failure). Bloquear en cada reinicio saca al usuario del
+        escritorio que estaba usando. NRestarts vale 0 en un arranque, un
+        inicio manual o una instalacion, asi que esos siguen bloqueando.
+        """
+        casos = [("0", 0, True), ("1", 0, False), ("7", 0, False)]
+        for salida, codigo, bloquea in casos:
+            with self.subTest(NRestarts=salida):
+                self.assertEqual(self._bloquea(salida, codigo), bloquea)
+
+    def test_si_no_se_puede_leer_el_contador_se_bloquea(self):
+        """Ante la duda, del lado seguro: bloquear."""
+        for salida, codigo in [("", 0), ("abc", 0), ("", 1)]:
+            with self.subTest(salida=salida, codigo=codigo):
+                self.assertTrue(self._bloquea(salida, codigo))
+
+    def test_la_llamada_a_lock_session_depende_de_la_funcion(self):
+        """Que nadie vuelva a llamar a `loginctl lock-session` sin pasar por la funcion."""
+        codigo_sesion = codigo(self.ARCHIVO)
+        condicion = re.search(r"if\s+should_lock_session\s*;\s*then", codigo_sesion)
+        self.assertIsNotNone(condicion, "el bloqueo ya no pasa por should_lock_session")
+        for llamada in re.finditer(r"lock-session", codigo_sesion):
+            self.assertGreater(
+                llamada.start(), condicion.start(),
+                "hay un `lock-session` fuera de la condicion should_lock_session",
+            )
+
+
 class ReglasDelPerfilKdeKms(unittest.TestCase):
     def test_el_edid_generado_tiene_los_dos_vsdb(self):
         """«El EDID lleva los dos VSDB, o NVIDIA no activa el CRTC.»
