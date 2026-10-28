@@ -4,6 +4,7 @@ set -euo pipefail
 readonly output_name="MIRAGE"
 readonly workspace_id="21"
 readonly config_file="@TARGET_HOME@/.config/sunshine/sunshine-hyprland.conf"
+readonly extra_config_file="@TARGET_HOME@/.config/sunshine/sunshine-hyprland.extra.conf"
 readonly stream_stop="@TARGET_HOME@/.local/lib/mirage-stream/stream-stop.sh"
 
 created_output=false
@@ -94,6 +95,13 @@ capture = wlr
 encoder = nvenc
 native_pen_touch = enabled
 EOF
+
+# The file above is rewritten on every start, so a setting added to it by hand
+# is silently lost on the next restart. Machine-specific settings (for example
+# `gamepad = ds5`) go in this optional file, appended as-is.
+if [[ -f "$extra_config_file" ]]; then
+    cat "$extra_config_file" >>"$config_file"
+fi
 
 # Give Sunshine its Wayland display before locking the session. hypridle's
 # lock_cmd turns the loginctl lock request into Quickshell's own lock screen

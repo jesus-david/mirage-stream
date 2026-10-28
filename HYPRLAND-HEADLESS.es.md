@@ -43,7 +43,10 @@ Las copias previas de los archivos de usuario se guardan en
 2. Ese script crea el output headless `MIRAGE` a 2560x1440@60 y lo asigna al
    workspace 21.
 3. Lanza Sunshine con `~/.config/sunshine/sunshine-hyprland.conf`
-   (`output_name = MIRAGE`, `capture = wlr`, encoder `nvenc`).
+   (`output_name = MIRAGE`, `capture = wlr`, encoder `nvenc`). Ese archivo se
+   reescribe en cada arranque: un ajuste propio de la maquina (por ejemplo
+   `gamepad = ds5`) va en `~/.config/sunshine/sunshine-hyprland.extra.conf`,
+   que es opcional y se agrega al final tal cual.
 4. Bloquea la sesion: pide `loginctl lock-session` y, un segundo despues, si
    `hyprlock` todavia no quedo corriendo (la cadena `hypridle`→`quickshell`
    puede estar rota segun la config, ver "Problemas conocidos"), lo lanza
