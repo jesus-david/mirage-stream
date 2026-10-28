@@ -118,6 +118,8 @@ fi
 
 restore_bar_output
 
+"@TARGET_HOME@/.local/lib/mirage-stream/set-primary-output.sh" || log "Could not restore the XWayland primary output"
+
 if [[ -x "$HOME/.config/hypr/scripts/WallpaperDaemon.sh" ]]; then
     "$HOME/.config/hypr/scripts/WallpaperDaemon.sh" &
 fi

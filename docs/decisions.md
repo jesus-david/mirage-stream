@@ -3,6 +3,19 @@
 Por qué el proyecto quedó así y no de otra forma. Casi todo esto salió de romperlo
 primero: si algo se ve raro, buscalo acá antes de "arreglarlo".
 
+## Monitor principal de XWayland al entrar y salir del stream
+
+Los juegos X11 pueden elegir MIRAGE por ser el primer output de XWayland aunque
+el escritorio local esté en un monitor físico. Mover los workspaces de Hyprland
+no actualiza esa elección. `set-primary-output.sh` fija el principal con `xrandr`:
+MIRAGE al conectar; un monitor físico activo, preferentemente el enfocado, al
+desconectar y al iniciar la sesión. Si sólo existe MIRAGE, usa ese output.
+El arranque importa también `DISPLAY` al entorno de systemd. Un error de XWayland
+se registra sin impedir que Sunshine siga funcionando.
+
+Las pruebas cubren la selección y los tres hooks; confirmar el mouse en un juego
+después de una desconexión real sigue siendo necesario.
+
 ## Por qué hay dos perfiles y no uno
 
 El perfil original (`kde-kms`) resuelve el problema desde el kernel: inyecta un EDID en

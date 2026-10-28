@@ -85,6 +85,8 @@ fi
 hleval "hl.monitor({ output = \"$output_name\", mode = \"2560x1440@60\", position = \"10000x0\", scale = 1 })"
 hleval "hl.workspace_rule({ workspace = \"$workspace_id\", monitor = \"$output_name\", default = true })"
 
+"@TARGET_HOME@/.local/lib/mirage-stream/set-primary-output.sh" || log "Could not select the local XWayland primary output"
+
 mkdir -p "$(dirname "$config_file")"
 cat >"$config_file" <<EOF
 # Managed by mirage-stream --profile hyprland-headless.

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# XWayland otherwise lists the unreachable headless output first for games.
+output="${1:-}"
+if [[ -z "$output" ]]; then
+    output="$(hyprctl -j monitors | jq -r \
+        'sort_by(.name == "MIRAGE", .focused != true) | .[0].name // empty')"
+fi
+[[ -n "$output" ]] || exit 1
+xrandr --output "$output" --primary

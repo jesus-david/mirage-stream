@@ -112,3 +112,4 @@ done
 
 sleep 1
 hleval 'hl.dispatch(hl.dsp.focus({ workspace = "1" }))'
+"@TARGET_HOME@/.local/lib/mirage-stream/set-primary-output.sh" "$virtual_output" || log "Could not select the XWayland primary output"

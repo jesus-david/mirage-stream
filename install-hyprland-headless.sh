@@ -218,6 +218,7 @@ install_profile() {
     backup_path "$lib_dir/hyprland-headless-session.sh"
     backup_path "$lib_dir/stream-start.sh"
     backup_path "$lib_dir/stream-stop.sh"
+    backup_path "$lib_dir/set-primary-output.sh"
     backup_path "$TARGET_HOME/.config/hypr/custom/general.lua"
 
     install_template "$SCRIPT_DIR/profiles/hyprland-headless/mirage-stream-hyprland.service.in" \
@@ -230,6 +231,8 @@ install_profile() {
         "$lib_dir/stream-start.sh" 0755
     install_template "$SCRIPT_DIR/profiles/hyprland-headless/stream-stop.sh.in" \
         "$lib_dir/stream-stop.sh" 0755
+    install_template "$SCRIPT_DIR/profiles/hyprland-headless/set-primary-output.sh.in" \
+        "$lib_dir/set-primary-output.sh" 0755
 
     cat >"$sunshine_dir/sunshine.conf" <<EOF
 # Mirage Stream uses sunshine-hyprland.conf, generated for the MIRAGE output.
@@ -265,6 +268,7 @@ uninstall_profile() {
     rm -f "$TARGET_HOME/.local/lib/mirage-stream/hyprland-headless-session.sh"
     rm -f "$TARGET_HOME/.local/lib/mirage-stream/stream-start.sh"
     rm -f "$TARGET_HOME/.local/lib/mirage-stream/stream-stop.sh"
+    rm -f "$TARGET_HOME/.local/lib/mirage-stream/set-primary-output.sh"
     remove_hyprland_startup
     remove_hyprland_monitor_rule
     systemctl --user daemon-reload
