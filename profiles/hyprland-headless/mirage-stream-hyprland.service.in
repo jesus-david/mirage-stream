@@ -2,6 +2,9 @@
 Description=Mirage Stream headless Sunshine session for Hyprland
 After=graphical-session.target
 PartOf=graphical-session.target
+# Enabled on graphical-session.target, which Plasma also starts: without this
+# the session script exits 1 there and Restart=on-failure loops every 3 s.
+ConditionEnvironment=XDG_CURRENT_DESKTOP=Hyprland
 
 [Service]
 Type=simple
